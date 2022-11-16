@@ -1,15 +1,42 @@
 library(shiny)
-
+library(readr)
 library(dplyr)
-
 library(leaflet)
-
+library(sf)
 library(DT)
+
+
+got_eolienne_data <- function(path) {
+  stuff <- st_read(path)
+  
+  st_crs(stuff)
+  s.sf.gcs <- st_transform(stuff, crs = 4326)
+  y = as(s.sf.gcs, "Spatial")
+  df_eolienne <- as.data.frame(SpatialPoints(y))
+  colnames(df_eolienne)<-c("lon", "lat")
+  df_eolienne$nom <- s.sf.gcs$nom_parc
+  
+  df_eolienne$type <- "Eolienne"
+  
+  return(df_eolienne)
+  
+}
+
+got_solar_data <- function() {
+  
+  BDPV_opendata_installations <- read_delim("BDPV-opendata-installations.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+  df <- BDPV_opendata_installations[c("lon", "lat",  "locality")]
+  df$type <- "Panneau solaire"
+  df <- as.data.frame(df)
+  return(df)
+  
+}
+
 
 shinyServer(function(input, output) {
   # Import Data and clean it
   
-  bb_data <- read.csv("data/blood-banks.csv", stringsAsFactors = FALSE )
+  bb_data <- read.csv("blood-banks.csv", stringsAsFactors = FALSE )
   bb_data <- data.frame(bb_data)
   bb_data$Latitude <-  as.numeric(bb_data$Latitude)
   bb_data$Longitude <-  as.numeric(bb_data$Longitude)
@@ -30,36 +57,47 @@ shinyServer(function(input, output) {
                                           '<br><strong>Contact6:</strong> ',Contact.No.6,
                                           '<br><strong>Contact7:</strong> ',Contact.No.7,
                                           '<br><strong>Email:</strong> ',Email,
-                                          '<br><strong>Website:</strong> ',Website)) 
+                                          '<br><strong>Website:</strong> ',Website))
 
   # create a color paletter for category type in the data file
   
-  pal <- colorFactor(pal = c("#1b9e77", "#d95f02", "#7570b3"), domain = c("Charity", "Government", "Private"))
-   
-  # create the leaflet map  
+  pal <- colorFactor(pal = c("#1b9e77", "#d95f02", "#7570b3"), domain = c("Eolienne", "Panneau solaire"))
+  
+  
+  # # create the leaflet map  
+  # output$bbmap <- renderLeaflet({
+  #     leaflet(bb_data) %>%
+  #     addCircles(lng = ~Longitude, lat = ~Latitude) %>%
+  #     addTiles() %>%
+  #     addCircleMarkers(data = bb_data, lat =  ~Latitude, lng =~Longitude,
+  #                      radius = 3, popup = ~as.character(cntnt),
+  #                      color = ~pal(Category),
+  #                      stroke = FALSE, fillOpacity = 0.8)%>%
+  #     addLegend(pal=pal, values=bb_data$Category,opacity=1, na.label = "Not Available")%>%
+  #     addEasyButton(easyButton(
+  #       icon="fa-crosshairs", title="ME",
+  #       onClick=JS("function(btn, map){ map.locate({setView: true}); }")))
+  #       })
+  
+  #eol_data <- got_eolienne_data('Bureau/workshop_2022/eolien-filtre/eolien_filtre.shp')
+  
+  eol_data <- got_eolienne_data('eolien-filtre/eolien_filtre.shp')
+  solar_data <- got_solar_data()
+  colnames(solar_data) <- colnames(eol_data)
+  
+  #solar_data <- head(solar_data, 200)
+  
+  data <- rbind(eol_data, solar_data) 
+  
   output$bbmap <- renderLeaflet({
-      leaflet(bb_data) %>% 
-      addCircles(lng = ~Longitude, lat = ~Latitude) %>% 
+      leaflet(data) %>%
+      addCircles(lng = ~lon, lat = ~lat) %>%
       addTiles() %>%
-      addCircleMarkers(data = bb_data, lat =  ~Latitude, lng =~Longitude, 
-                       radius = 3, popup = ~as.character(cntnt), 
-                       color = ~pal(Category),
-                       stroke = FALSE, fillOpacity = 0.8)%>%
-      addLegend(pal=pal, values=bb_data$Category,opacity=1, na.label = "Not Available")%>%
-      addEasyButton(easyButton(
-        icon="fa-crosshairs", title="ME",
-        onClick=JS("function(btn, map){ map.locate({setView: true}); }")))
-        })
-  
-  #create a data object to display data
-  
-  output$data <-DT::renderDataTable(datatable(
-      bb_data[,c(-1,-23,-24,-25,-28:-35)],filter = 'top',
-      colnames = c("Blood Bank Name", "State", "District", "City", "Address", "Pincode","Contact No.",
-                   "Mobile","HelpLine","Fax","Email", "Website","Nodal Officer", "Contact of Nodal Officer",
-                   "Mobile of Nodal Officer", "Email of Nodal Officer","Qualification", "Category", "Blood Component Available",
-                   "Apheresis", "Service Time", "Lat", "Long.")
-  ))
-
+        addCircleMarkers(data = data, lat =  ~lat, lng =~lon,
+                         radius = 3, # popup = ~as.character(cntnt),
+                         color = ~pal(type),
+                         stroke = FALSE, fillOpacity = 0.8) %>%
+         addLegend(pal=pal, values=data$type,opacity=1, na.label = "Not Available")
+    })
   
 })

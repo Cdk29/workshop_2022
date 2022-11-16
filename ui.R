@@ -1,8 +1,10 @@
 library(shiny)
 library(leaflet)
+library(shinythemes)
 
-navbarPage("Location of Blood Banks", id="main",
+navbarPage(theme = shinytheme("slate"),
+           "Eco Predict", id="main",
            tabPanel("Map", leafletOutput("bbmap", height=1000)),
-           tabPanel("Data", DT::dataTableOutput("data")),
+           #tabPanel("Data", DT::dataTableOutput("data")),
            tabPanel("Read Me",includeMarkdown("readme.md")))
 
