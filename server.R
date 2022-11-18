@@ -4,6 +4,11 @@ library(dplyr)
 library(leaflet)
 library(sf)
 library(DT)
+library(rgdal)
+library(colorblindr)
+library(lubridate)
+
+# ggthemr('light')
 
 
 got_eolienne_data <- function(path) {
@@ -31,6 +36,57 @@ got_solar_data <- function() {
   return(df)
   
 }
+
+#
+time_frame <- as_datetime(c("2022-11-18 00:00:00", "2022-11-18 23:59:59"))
+electricity <- data.frame(
+  heure = seq(time_frame[1], time_frame[2], by = "hour"),
+  value = (runif(24) + sqrt(runif(24))) * 100
+)
+
+production <- data.frame(
+  heure = seq(time_frame[1], time_frame[2], by = "hour"),
+  value = (runif(24)) * 10
+)
+
+energie_pilotable <- data.frame(
+  heure = seq(time_frame[1], time_frame[2], by = "hour"),
+  value = electricity$value -  production$value
+)
+
+
+p <- electricity %>%
+  ggplot( aes(x=heure, y=value)) +
+  geom_area(fill="#69b3a2", alpha=0.5) +
+  geom_line(color="#69b3a2") +
+  ylab("Consommation en MW") +
+  theme_minimal()
+
+# Turn it interactive with ggplotly
+p <- ggplotly(p)
+p
+
+g <- production %>%
+  ggplot( aes(x=heure, y=value)) +
+  geom_area(fill="#a269b3", alpha=0.5) +
+  geom_line(color="#a269b3") +
+  ylab("Production en MW") +
+  theme_minimal()
+
+# Turn it interactive with ggplotly
+g <- ggplotly(g)
+g
+
+pilot <- energie_pilotable %>%
+  ggplot( aes(x=heure, y=value)) +
+  geom_area(fill="#b3a269", alpha=0.5) +
+  geom_line(color="#b3a269") +
+  ylab("Energie pilotable \n à fournir, en MW") +
+  theme_minimal()
+
+# Turn it interactive with ggplotly
+pilot <- ggplotly(pilot)
+pilot
 
 
 shinyServer(function(input, output) {
@@ -60,24 +116,18 @@ shinyServer(function(input, output) {
                                           '<br><strong>Website:</strong> ',Website))
 
   # create a color paletter for category type in the data file
+  pal <- palette_OkabeIto[c(5,1)] 
   
-  pal <- colorFactor(pal = c("#1b9e77", "#d95f02", "#7570b3"), domain = c("Eolienne", "Panneau solaire"))
+  # pal <- c("#6778A5", "#ECBF93")
+  pal <- colorFactor(pal = pal, domain = c("Eolienne", "Panneau solaire"))
+
+  output$reactive_case_count <- renderText({
+    paste0("Production éolienne estimé : ", max(production$value), " MW")
+  })
   
-  
-  # # create the leaflet map  
-  # output$bbmap <- renderLeaflet({
-  #     leaflet(bb_data) %>%
-  #     addCircles(lng = ~Longitude, lat = ~Latitude) %>%
-  #     addTiles() %>%
-  #     addCircleMarkers(data = bb_data, lat =  ~Latitude, lng =~Longitude,
-  #                      radius = 3, popup = ~as.character(cntnt),
-  #                      color = ~pal(Category),
-  #                      stroke = FALSE, fillOpacity = 0.8)%>%
-  #     addLegend(pal=pal, values=bb_data$Category,opacity=1, na.label = "Not Available")%>%
-  #     addEasyButton(easyButton(
-  #       icon="fa-crosshairs", title="ME",
-  #       onClick=JS("function(btn, map){ map.locate({setView: true}); }")))
-  #       })
+  output$reactive_death_count <- renderText({
+    paste0("Consommation estimé : ", max(electricity$value), " MW")
+  })
   
   #eol_data <- got_eolienne_data('Bureau/workshop_2022/eolien-filtre/eolien_filtre.shp')
   
@@ -85,19 +135,22 @@ shinyServer(function(input, output) {
   solar_data <- got_solar_data()
   colnames(solar_data) <- colnames(eol_data)
   
-  #solar_data <- head(solar_data, 200)
+  solar_data <- head(solar_data, 200)
   
-  data <- rbind(eol_data, solar_data) 
+  data <- rbind(eol_data, solar_data)
   
   output$bbmap <- renderLeaflet({
       leaflet(data) %>%
       addCircles(lng = ~lon, lat = ~lat) %>%
       addTiles() %>%
         addCircleMarkers(data = data, lat =  ~lat, lng =~lon,
-                         radius = 3, # popup = ~as.character(cntnt),
+                         radius = 3, popup = ~nom,
                          color = ~pal(type),
                          stroke = FALSE, fillOpacity = 0.8) %>%
-         addLegend(pal=pal, values=data$type,opacity=1, na.label = "Not Available")
+         addLegend(pal=pal, values=data$type, opacity=1, na.label = "Not Available")
     })
+  output$prediction_plot <- renderPlotly({p})
+  output$production_plot <- renderPlotly({g})
+  output$pilot_plot <- renderPlotly({pilot})
   
 })
